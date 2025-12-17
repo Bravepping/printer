@@ -28,7 +28,12 @@ public class AdminController {
     @Autowired
     private UserService userService;
 
-    //获取所有用户信息
+    /**
+     * 获取所有用户
+     * @param page
+     * @param size
+     * @return
+     */
     @RequestMapping(value = "/user/list",method = RequestMethod.GET)
     public ResultT<UserInfoListVo> getAllUser(HttpSession session,
                                               @RequestParam(value = "page", defaultValue = "1") Integer page,
@@ -42,7 +47,11 @@ public class AdminController {
         }
         return ResultT.success(userService.getAllUser(user.getId(),page,size));
     }
-    //添加一个用户
+    /**
+     * 添加一个用户
+     * @param user
+     * @return
+     */
     @RequestMapping(value = "/user/add",method = RequestMethod.POST)
     public ResultT<String> addUser(@RequestBody AdminAddUserDto user,HttpSession session){
         User user2 = (User) session.getAttribute("user");
@@ -54,7 +63,11 @@ public class AdminController {
         }
         return userService.saveUser(user) ? ResultT.success("添加成功") : ResultT.error("添加失败");
     }
-    //编辑一个用户
+    /**
+     * 修改一个用户
+     * @param user
+     * @return
+     */
     @RequestMapping(value = "/user/edit",method = RequestMethod.POST)
     public ResultT<String> editUser(@RequestBody EditUserDto user,HttpSession session){
         User user2 = (User) session.getAttribute("user");
@@ -70,13 +83,22 @@ public class AdminController {
         userById.setRole(user.getRole());
         return userService.updateById(userById) ? ResultT.success("更新成功") : ResultT.error("更新失败");
     }
-    //更新用户状态 0禁用 1正常 -1伪删除
+    /**
+     * 更新用户状态 0禁用 1正常
+     * @param id
+     * @param status
+     * @return
+     */
     @RequestMapping(value = "/user/updateStatus",method = RequestMethod.POST)
     public ResultT<String> updateStatus(Integer id,Integer status){
 
         return userService.updateStatus(id,status) ? ResultT.success("更新成功") : ResultT.error("更新失败");
     }
-    //更新用户权限 1普通用户2免审核用户
+    /**
+     * /更新用户权限 1普通用户 2免审核用户
+     * @param id 用户ID role 1普通用户 2免审核用户
+     * @return
+     */
     @RequestMapping(value = "/user/updateRole",method = RequestMethod.POST)
     public ResultT<String> updateRole(Integer id,Integer role){
 
@@ -99,11 +121,11 @@ public class AdminController {
         Map<String, String> configs = sysConfigService.getAllConfigs();
         return ResultT.success(configs);
     }
+
     /**
      * 更新系统配置
-     * URL: /sys/config/update
-     * Method: POST
-     * Body: JSON {"system_name": "新的名称", "max_file_size": "50", ...}
+     * @param configs
+     * @return
      */
     @RequestMapping(value = "/sys/config/update", method = RequestMethod.POST)
     public ResultT<String> updateSysConfig(@RequestBody Map<String, String> configs, HttpSession session) {

@@ -36,9 +36,6 @@ import java.util.concurrent.*;
 @Component
 public class PrintJobConsumer {
 
-    @Value("${file.upload-path}")
-    private String uploadDir;
-
     @Autowired
     private StringRedisTemplate stringRedisTemplate;
 

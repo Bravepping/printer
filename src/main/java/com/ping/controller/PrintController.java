@@ -29,6 +29,12 @@ public class PrintController {
         this.printJobService = printJobService;
     }
 
+    /**
+     * 创建打印任务
+     * @param printDto
+     * @param session
+     * @return
+     */
     @RequestMapping(value = "/print",method = RequestMethod.POST)
     public ResultT<String> print(@RequestBody PrintDto printDto,
                         HttpSession session) {
@@ -43,7 +49,12 @@ public class PrintController {
             return ResultT.error("打印任务创建失败");
         }
     }
-    //取消打印任务，删除redis中的任务
+    /**
+     * 取消打印任务
+     * @param session
+     * @param printJobId
+     * @return
+     */
     @RequestMapping(value = "/cancel",method = RequestMethod.GET)
     public ResultT<String> cancel(HttpSession session,
                                   Integer printJobId) {
@@ -56,7 +67,11 @@ public class PrintController {
         }else return ResultT.error("取消失败");
     }
 
-    //获取所有打印机
+    /**
+     * 获取打印设备列表
+     * @param session
+     * @return
+     */
     @RequestMapping(value = "/list",method = RequestMethod.GET)
     public ResultT<List<String>> list(HttpSession session) {
         User user = (User) session.getAttribute("user");
@@ -66,7 +81,13 @@ public class PrintController {
         return ResultT.success(printJobService.getPrinters());
     }
 
-    //获取当前用户打印任务
+    /**
+     * 获取当前用户打印任务
+     * @param session
+     * @param page
+     * @param size
+     * @return
+     */
     @RequestMapping(value = "/user",method = RequestMethod.GET)
     public ResultT<PrintsListVo> user(HttpSession session,
                                       @RequestParam(value = "page",defaultValue = "1") int page,
@@ -78,7 +99,14 @@ public class PrintController {
         return ResultT.success(printJobService.getPrintJobsByUserId(user.getId(),page,size));
     }
 
-    //获取所有用户打印任务，不包括管理员
+    /**
+     * 获取所有打印任务
+     * @param session
+     * @param type
+     * @param page
+     * @param size
+     * @return
+     */
     @RequestMapping(value = "/users",method = RequestMethod.GET)
     public ResultT<AdminPrintsListVo> users(HttpSession session,
                                             @RequestParam(value = "type",defaultValue = "1") int type,
@@ -94,7 +122,13 @@ public class PrintController {
         return ResultT.success(printJobService.getAllPrintJobs(page,size,type));
     }
 
-    //审批打印任务
+    /**
+     * 审批打印任务
+     * @param session
+     * @param printJobId
+     * @param isLive
+     * @return
+     */
     @RequestMapping(value = "/approve",method = RequestMethod.POST)
     public ResultT<String> approve(HttpSession session,
                                    @RequestParam("id") Integer printJobId,

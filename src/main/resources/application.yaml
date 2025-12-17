@@ -1,8 +1,10 @@
 file:
-  upload-path: D:/upload/  # 生产环境可以改为 /data/upload/
+  # 保存文件目录
+  upload-path: D:/upload/
 server:
   port: 9003
 spring:
+#  数据库配置
   datasource:
     username: root
     url: jdbc:mysql://154.36.154.211:9002/webprint?useUnicode=true&characterEncoding=utf-8&useSSL=false&timezone=Asia/Shanghai
@@ -13,8 +15,8 @@ spring:
       max-file-size: 512MB
       max-request-size: 512MB
   data:
+#    redis配置
     redis:
-#      host: 154.36.154.211
       host: 103.244.88.91
       port: 6379
       password: inspur123

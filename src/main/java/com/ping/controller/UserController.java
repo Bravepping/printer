@@ -33,6 +33,11 @@ public class UserController {
         this.userService = userService;
     }
 
+    /**
+     * 注册
+     * @param addUserDto
+     * @return
+     */
     @PostMapping(value = "/register")
     public ResultT< String> addUser(@RequestBody AddUserDto addUserDto){
         User user = new User();
@@ -48,6 +53,11 @@ public class UserController {
         return ResultT.error("添加失败");
     }
 
+    /**
+     * 登录
+     * @param loginUserDto
+     * @return
+     */
     @PostMapping(value = "/login")
     public ResultT<String> login(@RequestBody LoginUserDto loginUserDto,
                                  HttpSession  session
@@ -58,23 +68,27 @@ public class UserController {
             userService.recordLoginTime(user.getId());
             // 1. 将用户信息存入 Session（服务端内存）
             session.setAttribute("user", user);
-            // 2. 获取 Session ID
-            //String sessionId = session.getId();
-
-            // 3. 将 Session ID 作为凭证返回给前端
-            // 前端以后访问时，可以通过 Cookie 自动携带，也可以在 Header 中手动携带
             return ResultT.success(session.getId());
         }
         return ResultT.error("用户名或密码错误");
     }
-
+    /**
+     * 注销
+     * @param session
+     * @return
+     */
     @GetMapping(value = "/logout")
     public ResultT<String> logout(HttpSession session){
         // 1. 移除 Session 中的用户信息，标记用户未登录
         session.removeAttribute("user");
         return ResultT.success("注销成功");
     }
-    //修改密码
+    /**
+     * 修改密码
+     * @param session
+     * @param newPassword
+     * @return
+     */
     @PostMapping(value = "/change-password")
     public ResultT<String> updatePassword(HttpSession session,String newPassword){
         User user = (User) session.getAttribute("user");
@@ -88,6 +102,11 @@ public class UserController {
         }
         return ResultT.error("修改失败");
     }
+    /**
+     * 获取用户信息
+     * @param session
+     * @return
+     */
     @RequestMapping("/info")
     public ResultT<UserInfoVo> info(HttpSession session){
         UserInfoVo userInfoVo = new UserInfoVo();
@@ -109,22 +128,5 @@ public class UserController {
         userInfoVo.setRole(user.getRole());
         return ResultT.success(userInfoVo);
     }
-    @GetMapping(value = "/get/{id}")
-    public ResultT<User> getUser(@PathVariable("id") Integer id){
-        return ResultT.success(userService.getById(id));
-    }
 
-    @PutMapping(value = "/update")
-    public ResultT<String> updateUser(@RequestBody User user){
-        boolean update = userService.updateById(user);
-        if (update){
-            return ResultT.success("修改成功");
-        }
-        return ResultT.error("修改失败");
-    }
-
-    @GetMapping(value = "/list")
-    public ResultT<List<User>> listUser(){
-        return ResultT.success(userService.list());
-    }
 }

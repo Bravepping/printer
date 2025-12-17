@@ -8,9 +8,11 @@ import com.ping.pojo.Files;
 import com.ping.pojo.User;
 import com.ping.service.FilesService;
 import com.ping.utils.ResultT;
+import com.ping.utils.SystemUtil;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -31,12 +33,16 @@ public class FileController {
 
     @Value("${file.upload-path}")
     private String uploadPath;
-
     public FileController(FilesService filesService) {
         this.filesService = filesService;
     }
 
-    //上传文件
+    /**
+     * 上传文件
+     * @param file
+     * @param session
+     * @return
+     */
     @PostMapping(value = "/upload")
     @FileCheck
     public ResultT<String> uploadFile(@RequestParam("file") MultipartFile file,
@@ -52,7 +58,6 @@ public class FileController {
         if (user == null) {
             return ResultT.error("请先登录");
         }
-
         // 2. 构建安全的存储目录
         String username = user.getUsername();
         // 建议使用 File.separator 兼容 Windows/Linux，或者直接用 /
@@ -88,7 +93,12 @@ public class FileController {
             return ResultT.error("上传错误: " + e.getMessage());
         }
     }
-
+    /**
+     * 下载文件
+     * @param fileId
+     * @param session
+     * @param response
+     */
     @GetMapping("/download")
     public void downloadFile(@RequestParam("fileId") Integer fileId,
                              HttpSession session,
@@ -160,6 +170,14 @@ public class FileController {
         }
     }
 
+    /**
+     * 文件列表
+     * @param session
+     * @param query
+     * @param page
+     * @param size
+     * @return
+     */
     @RequestMapping(value = "/list")
     public ResultT<FilesListVo> fileList(HttpSession session,
                                          @RequestParam(value = "query",defaultValue = "") String query,
@@ -171,7 +189,12 @@ public class FileController {
         }
         return ResultT.success(filesService.selectFileList(user.getId(),page,size,query));
     }
-    //删除文件，将status改为0
+    /**
+     * 删除文件，将status改为0
+     * @param id
+     * @param session
+     * @return
+     */
     @RequestMapping(value = "/delete")
     public ResultT<String> deleteFile(@RequestParam("id") Integer id, HttpSession session){
         User user =(User) session.getAttribute("user");
