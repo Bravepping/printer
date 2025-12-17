@@ -2,6 +2,7 @@ package com.ping.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ping.config.SpringIcoGo;
 import com.ping.pojo.Files;
 import com.ping.pojo.PrintJob;
 import com.ping.utils.SystemUtil;
@@ -12,6 +13,8 @@ import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.printing.PDFPageable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
+import org.springframework.context.annotation.Conditional;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -34,6 +37,7 @@ import java.util.concurrent.*;
 
 @Slf4j
 @Component
+@ConditionalOnClass(SpringIcoGo.class)
 public class PrintJobConsumer {
 
     @Autowired

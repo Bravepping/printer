@@ -45,12 +45,12 @@ public class UserController {
         user.setPassword(addUserDto.getPassword());
         user.setEmail(addUserDto.getEmail());
         user.setCreateTime(new Date());
-
+        user.setStatus(1);
         boolean save = userService.register(user);
         if (save){
-            return ResultT.success("添加成功");
+            return ResultT.success("注册成功");
         }
-        return ResultT.error("添加失败");
+        return ResultT.error("注册失败");
     }
 
     /**
@@ -64,6 +64,9 @@ public class UserController {
     ){
         User user = userService.login(loginUserDto.getUsername(), loginUserDto.getPassword());
         if (user != null){
+            if (user.getStatus() == 0){
+                return ResultT.error("用户被禁用");
+            }
             //更新登录时间
             userService.recordLoginTime(user.getId());
             // 1. 将用户信息存入 Session（服务端内存）

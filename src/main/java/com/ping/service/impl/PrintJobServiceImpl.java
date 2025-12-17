@@ -176,6 +176,9 @@ public class PrintJobServiceImpl extends ServiceImpl<PrintJobMapper, PrintJob>
         long error = 0;
         long success = 0;
         long cancel = 0;
+        long timeout  = 0;
+        long reject = 0;
+        long pending = 0;
         long wait_review = printJobMapper.getWaitReviewCount(userId);
 
         for (Map<String, Object> map : list) {
@@ -191,12 +194,22 @@ public class PrintJobServiceImpl extends ServiceImpl<PrintJobMapper, PrintJob>
             }else if ("已取消".equals(status)) {
                 cancel = num;
             }
+            else if ("打印超时".equals(status)) {
+                timeout = num;
+            } else if ("审批拒绝".equals(status)) {
+                reject = num;
+            } else if ("打印中".equals(status)) {
+                pending = num;
+            }
         }
         printsListVo.setCurrent(results.getCurrent());
         printsListVo.setTotal(results.getTotal());
         printsListVo.setPages(results.getPages());
         printsListVo.setSize(results.getSize());
         printsListVo.setPrintWaitReview(wait_review);
+        printsListVo.setPrintPending(pending);
+        printsListVo.setPrintRejectReview(reject);
+        printsListVo.setPrintTimeout(timeout);
         printsListVo.setPrintCount(count);
         printsListVo.setPrintWait(wait);
         printsListVo.setPrintError(error);
