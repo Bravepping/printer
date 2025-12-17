@@ -1,0 +1,107 @@
+package com.ping.service.impl;
+
+import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.ping.pojo.SysConfig;
+import com.ping.service.SysConfigService;
+import com.ping.mapper.SysConfigMapper;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.StringRedisTemplate;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
+
+/**
+* @author Administrator
+* @description 针对表【sys_config(系统参数配置表)】的数据库操作Service实现
+* @createDate 2025-12-15 10:18:16
+*/
+@Service
+public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig>
+    implements SysConfigService{
+
+    @Autowired
+    private StringRedisTemplate redisTemplate;
+
+    // 定义缓存的前缀常量
+    private static final String CACHE_KEY_GLOBAL = "sys:config:all"; // 场景1：全量缓存Key
+    private static final String CACHE_KEY_PREFIX = "sys:config:";    // 场景2：单条缓存前缀
+    /**
+     * 批量更新配置
+     * @param configs key=configKey, value=configValue
+     */
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void batchUpdateConfigs(Map<String, String> configs) {
+        if (configs == null || configs.isEmpty()) {
+            return;
+        }
+        // 1. 循环更新数据库 (利用 MyBatis-Plus 的 LambdaUpdate)
+        // 注意：虽然是在循环中调用 update，但配置项通常只有十几项，性能影响可忽略。
+        // 如果数据量巨大（上千条），则不建议这样写，应使用 SQL Case When 语法。
+        configs.forEach((key, value) -> {
+            // update sys_config set config_value = ? where config_key = ?
+            boolean success = this.lambdaUpdate()
+                    .eq(SysConfig::getConfigKey, key) // 根据 config_key 查询
+                    .set(SysConfig::getConfigValue, value) // 更新值
+                    // .set(SysConfig::getUpdateTime, new Date()) // 如果数据库没有配置自动更新时间，需手动加上
+                    .update();
+            if (!success) {
+                // 可选：记录日志，说明某个 Key 更新失败（可能是 Key 不存在）
+                System.err.println("配置项不存在或更新失败: " + key);
+            }
+        });
+        // 2. 清除 Redis 缓存 (Cache Aside: 先更库，后删缓存)
+        clearRedisCache(configs);
+    }
+
+    @Override
+    public Map<String, String> getAllConfigs() {
+        // 1. 先查 Redis 缓存
+        // opsForHash().entries() 会返回 Map<Object, Object>，需要转一下泛型，或者直接用 StringRedisTemplate 的特性
+        Map<Object, Object> cacheMap = redisTemplate.opsForHash().entries(CACHE_KEY_GLOBAL);
+
+        // 如果缓存不为空，直接转换并返回
+        if (cacheMap != null && !cacheMap.isEmpty()) {
+            // 将 Map<Object, Object> 强转/转换为 Map<String, String>
+            return cacheMap.entrySet().stream()
+                    .collect(Collectors.toMap(
+                            e -> (String) e.getKey(),
+                            e -> (String) e.getValue()
+                    ));
+        }
+
+        // 2. 缓存未命中，查询数据库
+        // 查询所有配置，只取 key 和 value 字段即可（如果数据量大可优化 SQL，这里直接查全量）
+        List<SysConfig> list = this.list();
+
+        // 3. 将 List 转换为 Map<Key, Value>
+        Map<String, String> configMap = list.stream()
+                .collect(Collectors.toMap(
+                        SysConfig::getConfigKey,
+                        // 防止 value 为 null 导致转 map 报错，给个空字符串默认值
+                        item -> item.getConfigValue() == null ? "" : item.getConfigValue()
+                ));
+
+        // 4. 回写 Redis 缓存 (重建缓存)
+        if (!configMap.isEmpty()) {
+            // 存入 Hash 结构
+            redisTemplate.opsForHash().putAll(CACHE_KEY_GLOBAL, configMap);
+            // 设置过期时间，例如 24 小时，防止缓存永久不更新的极端情况
+            redisTemplate.expire(CACHE_KEY_GLOBAL, 24, TimeUnit.HOURS);
+        }
+
+        return configMap;
+    }
+
+    private void clearRedisCache(Map<String, String> configs) {
+        redisTemplate.delete(CACHE_KEY_GLOBAL);
+    }
+}
+
+
+
+

@@ -1,0 +1,21 @@
+file:
+  upload-path: D:/upload/  # 生产环境可以改为 /data/upload/
+server:
+  port: 9003
+spring:
+  datasource:
+    username: root
+    url: jdbc:mysql://154.36.154.211:9002/webprint?useUnicode=true&characterEncoding=utf-8&useSSL=false&timezone=Asia/Shanghai
+    password: 123123
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  servlet:
+    multipart:
+      max-file-size: 512MB
+      max-request-size: 512MB
+  data:
+    redis:
+#      host: 154.36.154.211
+      host: 103.244.88.91
+      port: 6379
+      password: inspur123
+      timeout: 5000ms
