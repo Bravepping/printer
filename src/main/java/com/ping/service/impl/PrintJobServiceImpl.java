@@ -66,73 +66,79 @@ public class PrintJobServiceImpl extends ServiceImpl<PrintJobMapper, PrintJob>
 
 
     @Override
-    @Transactional(rollbackFor = Exception.class) // 开启事务，任何一步报错都会回滚
+    @Transactional(rollbackFor = Exception.class)
     public boolean createPrintJob(PrintDto printDto, Integer userId) {
-        QueryWrapper<Files> queryWrapper = new QueryWrapper<>();
-        //查询文件是否属于当前用户
-        Files files = filesService.getOne(queryWrapper.eq("id", printDto.getFileId()).eq("user_id", userId));
+        // 1. 校验文件归属
+        Files files = filesService.getOne(new QueryWrapper<Files>()
+                .eq("id", printDto.getFileId())
+                .eq("user_id", userId));
         if (files == null) {
             return false;
         }
+
         PrintJob printJob = new PrintJob();
-        int role = userMapper.getRoleByUserId(userId);
-//        int role = userService.getById(userId).getRole();
-        //获取redis里系统配置的is_review
+
+        // 获取用户角色 (建议判空)
+        Integer role = userMapper.getRoleByUserId(userId);
+        role = (role == null) ? 0 : role;
+
+        // ================== 改造点 1：简化配置获取 ==================
+        // 直接调用我们之前加强过的 getAllConfigs()，不用在这里写 try-catch 或手动查库
+        // 它内部已经处理了 Redis 挂掉的情况
         Map<String, String> allConfigs = sysConfigService.getAllConfigs();
-        String s = allConfigs.get("is_review");
-        if (s != null){
-            if (Integer.parseInt(s)==1){
-                if (role>=2){
-                    printJob.setIsLive(1);
-                    printJob.setStatus("待打印");
-                }else printJob.setIsLive(0);
-                printJob.setStatus("待审批");
-            }else printJob.setIsLive(1);
-            printJob.setStatus("待打印");
-        }else {
-            QueryWrapper<SysConfig> sysQueryWrapper = new QueryWrapper<>();
-            sysQueryWrapper.eq("config_key", "is_review");
-            SysConfig sysConfig = sysConfigService.getOne(sysQueryWrapper);
-            int isReview_db = Integer.parseInt(sysConfig.getConfigValue());
-            if (isReview_db==1){
-                if (role>=2){
-                    printJob.setIsLive(1);
-                    printJob.setStatus("待打印");
-                }else printJob.setIsLive(0);
-                printJob.setStatus("待审批");
-            }else printJob.setIsLive(1);
+
+        // 获取审核开关，默认为 "0" (关闭审核)
+        String isReviewStr = allConfigs.get("is_review");
+        boolean needReview = "1".equals(isReviewStr);
+
+        // ================== 改造点 2：梳理状态逻辑 ==================
+        // 逻辑：开启审核 且 用户不是管理员(role<2) -> 待审批
+        //       否则 -> 待打印
+        if (needReview && role < 2) {
+            printJob.setIsLive(0);
+            printJob.setStatus("待审批");
+        } else {
+            printJob.setIsLive(1);
             printJob.setStatus("待打印");
         }
-        // 1. 数据组装 (DTO -> Entity)
+
+        // 3. 数据组装
         printJob.setUserId(userId);
         printJob.setFilesId(printDto.getFileId());
-        printJob.setPage(printDto.getPageStart()+"-"+printDto.getPageEnd());
+        printJob.setPage(printDto.getPageStart() + "-" + printDto.getPageEnd());
         printJob.setCount(printDto.getCount());
         printJob.setIsDouble(printDto.getIsDoubleSided());
         printJob.setStartTime(new Date());
         printJob.setPrinterName(printDto.getPrinterName());
-        // 2. 【关键步骤】先保存到 MySQL
-        // 只有保存成功后，MyBatis-Plus 才会把生成的自增 ID 回填到 printJob 对象中
+
+        // 4. 保存到 MySQL
         boolean isSaved = this.save(printJob);
-        log.info("打印任务保存成功：{}", printJob);
         if (!isSaved) {
             return false;
         }
+        log.info("打印任务已保存至数据库，ID: {}", printJob.getId());
 
-        // 3. 【关键步骤】推送到 Redis 队列
-        try {
-            // 将 printJob 对象转换成 JSON 字符串
-            String jobJson = objectMapper.writeValueAsString(printJob);
-            //保存数据
-            stringRedisTemplate.opsForHash().put(PRINT_QUEUE_JOB, printJob.getId().toString(), jobJson);
-            // 将任务id推送到 Redis List 的右侧（队尾）
-            stringRedisTemplate.opsForList().rightPush(PRINT_QUEUE_KEY, printJob.getId().toString());
+        // ================== 改造点 3：Redis 推送 (软失败) ==================
+        // 只有当状态是 "待打印" 时，才需要推送到队列
+        // "待审批" 的任务不需要进队列，等审批通过后再推
+        if ("待打印".equals(printJob.getStatus())) {
+            try {
+                String jobJson = objectMapper.writeValueAsString(printJob);
 
-        } catch (JsonProcessingException e) {
-            // 如果 JSON 转换失败，或者 Redis 连接断开，这里抛出异常
-            // @Transactional 会捕获这个异常并回滚上面的 MySQL 插入操作，保证数据一致性
-            throw new RuntimeException("推送到打印队列失败", e);
+                // 推送 Hash
+                stringRedisTemplate.opsForHash().put(PRINT_QUEUE_JOB, printJob.getId().toString(), jobJson);
+                // 推送 List
+                stringRedisTemplate.opsForList().rightPush(PRINT_QUEUE_KEY, printJob.getId().toString());
+
+                log.info("任务已推送至 Redis 队列");
+            } catch (Exception e) {
+                // !!! 核心逻辑修改 !!!
+                // 这里捕获异常，但是【不抛出】，也就是【不回滚】数据库
+                // 因为消费者那边有数据库兜底，即使 Redis 挂了，消费者也能直接从 MySQL 查到这个任务
+                log.error("Redis 服务异常，任务推送失败 (任务已存入DB，等待兜底机制处理): {}", e.getMessage());
+            }
         }
+
         return true;
     }
 

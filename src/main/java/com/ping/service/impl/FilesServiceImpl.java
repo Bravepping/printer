@@ -3,14 +3,14 @@ package com.ping.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import com.baomidou.mybatisplus.extension.repository.AbstractRepository;
+
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ping.model.vo.FileVo;
 import com.ping.model.vo.FilesListVo;
 import com.ping.pojo.Files;
 import com.ping.service.FilesService;
 import com.ping.mapper.FilesMapper;
-import com.ping.utils.ResultT;
+
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -64,7 +64,7 @@ public class FilesServiceImpl extends ServiceImpl<FilesMapper, Files>
     public File getFileForDownload(Integer fileId, Integer userId) {
         // 1. 查询数据库记录
         Files files = filesMapper.getFileById(fileId);
-        log.info("files:{}", files);
+
         if (files == null) {
             throw new RuntimeException("文件记录不存在");
         }

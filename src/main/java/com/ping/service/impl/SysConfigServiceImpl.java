@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.ping.pojo.SysConfig;
 import com.ping.service.SysConfigService;
 import com.ping.mapper.SysConfigMapper;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -19,6 +20,7 @@ import java.util.stream.Collectors;
 * @description 针对表【sys_config(系统参数配置表)】的数据库操作Service实现
 * @createDate 2025-12-15 10:18:16
 */
+@Slf4j
 @Service
 public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig>
     implements SysConfigService{
@@ -60,13 +62,19 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
 
     @Override
     public Map<String, String> getAllConfigs() {
-        // 1. 先查 Redis 缓存
-        // opsForHash().entries() 会返回 Map<Object, Object>，需要转一下泛型，或者直接用 StringRedisTemplate 的特性
-        Map<Object, Object> cacheMap = redisTemplate.opsForHash().entries(CACHE_KEY_GLOBAL);
+        Map<Object, Object> cacheMap = null;
+
+        // 1. 尝试查 Redis 缓存 (加 try-catch 防止 Redis 挂了导致报错停止)
+        try {
+            cacheMap = redisTemplate.opsForHash().entries(CACHE_KEY_GLOBAL);
+        } catch (Exception e) {
+            // 重点：捕获异常，只打印日志，不抛出，让代码继续往下走去查数据库
+            log.error("Redis 连接失败或读取超时，准备降级查询数据库: {}", e.getMessage());
+            // 这里的 cacheMap 是 null，自然会走到下面的数据库查询逻辑
+        }
 
         // 如果缓存不为空，直接转换并返回
         if (cacheMap != null && !cacheMap.isEmpty()) {
-            // 将 Map<Object, Object> 强转/转换为 Map<String, String>
             return cacheMap.entrySet().stream()
                     .collect(Collectors.toMap(
                             e -> (String) e.getKey(),
@@ -74,8 +82,9 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
                     ));
         }
 
-        // 2. 缓存未命中，查询数据库
-        // 查询所有配置，只取 key 和 value 字段即可（如果数据量大可优化 SQL，这里直接查全量）
+        log.info("Redis 缓存未命中或连接失败，正在查询数据库...");
+
+        // 2. 缓存未命中（或者 Redis 挂了），查询数据库
         List<SysConfig> list = this.list();
 
         // 3. 将 List 转换为 Map<Key, Value>
@@ -85,13 +94,19 @@ public class SysConfigServiceImpl extends ServiceImpl<SysConfigMapper, SysConfig
                         // 防止 value 为 null 导致转 map 报错，给个空字符串默认值
                         item -> item.getConfigValue() == null ? "" : item.getConfigValue()
                 ));
-
         // 4. 回写 Redis 缓存 (重建缓存)
+        // 这里的 if 判断很重要，只有数据库查到了数据才回写
         if (!configMap.isEmpty()) {
-            // 存入 Hash 结构
-            redisTemplate.opsForHash().putAll(CACHE_KEY_GLOBAL, configMap);
-            // 设置过期时间，例如 24 小时，防止缓存永久不更新的极端情况
-            redisTemplate.expire(CACHE_KEY_GLOBAL, 24, TimeUnit.HOURS);
+            try {
+                // 也要加 try-catch！
+                // 如果 Redis 确实挂了，上面的读操作报错被 catch 了，走到这里尝试回写依然会报错
+                // 如果这里不 catch，项目还是会启动失败
+                redisTemplate.opsForHash().putAll(CACHE_KEY_GLOBAL, configMap);
+                redisTemplate.expire(CACHE_KEY_GLOBAL, 24, TimeUnit.HOURS);
+                log.info("系统配置已回写至 Redis");
+            } catch (Exception e) {
+                log.error("Redis 服务异常，回写缓存失败（仅记录，不影响业务）: {}", e.getMessage());
+            }
         }
 
         return configMap;

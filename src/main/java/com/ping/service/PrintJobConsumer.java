@@ -62,9 +62,6 @@ public class PrintJobConsumer {
     private static final String PRINT_QUEUE_KEY = "print:queue";
     private static final String PRINT_QUEUE_JOB = "print:queue:job";
 
-    // 超时设置：60秒
-    private static final long PRINT_TIMEOUT_SECONDS = 60;
-
     /**
      * 单线程线程池：
      * 专门用于执行物理打印任务。
@@ -77,17 +74,13 @@ public class PrintJobConsumer {
      * 策略：Redis 优先 -> 数据库兜底
      * fixedDelay = 3000: 每次执行完等待3秒再开始下一轮
      */
-    @Scheduled(fixedDelay = 3000)
+    @Scheduled(fixedDelay = 10000)
     public void consumePrintTask() throws InterruptedException {
         PrintJob currentJob = null;
         String source = "";
 
-//        int print_wait_time = Integer.parseInt(systemUtil.get("print_delay"));
-        //延迟打印时间
-//        Thread.sleep(print_wait_time * 1000L);
-
+        // ================= 1. 优先尝试从 Redis 获取 (独立 Try-Catch) =================
         try {
-            // ================= 1. 优先尝试从 Redis 获取 =================
             // leftPop: 获取并移除列表左侧第一个元素
             String printJobIdStr = stringRedisTemplate.opsForList().leftPop(PRINT_QUEUE_KEY);
 
@@ -97,14 +90,27 @@ public class PrintJobConsumer {
                 if (jsonObj != null) {
                     currentJob = objectMapper.readValue(jsonObj.toString(), PrintJob.class);
                     source = "Redis";
-                    // 拿到任务后，清理 Hash 中的数据，保持 Redis 干净
+                    // 拿到任务后，清理 Hash 中的数据
                     stringRedisTemplate.opsForHash().delete(PRINT_QUEUE_JOB, printJobIdStr);
+                } else {
+                    // 特殊情况：List 有 ID 但 Hash 没数据（数据不一致），视为无效，继续往下走
+                    log.warn("Redis数据不一致，List中有ID:{} 但Hash中无数据", printJobIdStr);
                 }
             }
+        } catch (Exception e) {
+            // !!! 关键点 !!!
+            // Redis 连不上或超时，只打印日志，绝对不要 throw，也不要 return
+            // 这样代码才能继续往下执行，进入数据库兜底环节
+            log.error("Redis 获取打印任务失败，准备降级查询数据库: {}", e.getMessage());
+        }
 
-            // ================= 2. 如果 Redis 没数据，尝试从数据库获取 (兜底) =================
-            if (currentJob == null) {
-                // 查询条件：状态为 "待打印"，按创建时间正序（FIFO），只取 1 条
+        // ================= 2. 如果 Redis 没拿到任务，尝试从数据库获取 (兜底) =================
+        // 只要 currentJob 为 null (无论是 Redis 没数据，还是 Redis 报错了)，都会进这里
+        if (currentJob == null) {
+            try {
+                // 建议优化：为了防止多台服务器同时取到同一个任务，最好在这里加个状态更新
+                // 例如：update status='打印中' where status='待打印' limit 1 (乐观锁或原子更新)
+                // 这里先保留你的原有逻辑：
                 QueryWrapper<PrintJob> queryWrapper = new QueryWrapper<>();
                 queryWrapper.eq("status", "待打印")
                         .orderByAsc("start_time")
@@ -114,20 +120,24 @@ public class PrintJobConsumer {
                 if (currentJob != null) {
                     source = "Database";
                 }
+            } catch (Exception e) {
+                log.error("数据库查询任务异常: {}", e.getMessage());
             }
+        }
 
-            // ================= 3. 如果都没有任务，直接返回 =================
-            if (currentJob == null) {
-                return;
-            }
+        // ================= 3. 如果都没有任务，直接返回 =================
+        if (currentJob == null) {
+            return;
+        }
 
-            log.info("获取到打印任务，来源: {}, 任务ID: {}", source, currentJob.getId());
+        log.info("获取到打印任务，来源: {}, 任务ID: {}", source, currentJob.getId());
 
-            // ================= 4. 执行核心处理逻辑 =================
+        // ================= 4. 执行核心处理逻辑 =================
+        try {
             processPrintJob(currentJob);
-
         } catch (Exception e) {
-            log.error("获取或解析打印任务异常", e);
+            log.error("处理打印任务逻辑异常, 任务ID: {}, 错误: {}", currentJob.getId(), e.getMessage());
+            // 如果处理失败，可能需要考虑把任务状态改回“待打印”或者记录“失败状态”，防止任务丢失
         }
     }
 
